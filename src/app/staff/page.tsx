@@ -383,7 +383,7 @@ export default function StaffPage() {
         <ul className="divide-y divide-gray-200">
           {staff.length === 0 ? (
             <li className="px-6 py-4 text-center text-gray-500">
-              No staff members added yet. Click "Add Staff Member" to get
+              No staff members added yet. Click &quot;Add Staff Member&quot; to get
               started.
             </li>
           ) : (

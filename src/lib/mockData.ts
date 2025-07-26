@@ -1,4 +1,4 @@
-import type { Staff, StaffPreferences, ShiftType, DayOfWeek } from '@/types'
+import type { Staff, ShiftType, DayOfWeek } from '@/types'
 
 export const SAMPLE_SKILLS = [
   'nursing',

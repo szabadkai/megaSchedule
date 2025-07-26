@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 
 import './globals.css'
 
@@ -24,36 +25,36 @@ export default function RootLayout({
                   MegaSchedule
                 </h1>
                 <div className="flex space-x-4">
-                  <a
+                  <Link
                     href="/"
                     className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Dashboard
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/staff"
                     className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Staff
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/schedule"
                     className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Schedule
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/schedules"
                     className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     History
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/staff-schedules"
                     className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                   >
                     Staff Schedules
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>

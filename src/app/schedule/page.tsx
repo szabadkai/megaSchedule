@@ -49,7 +49,7 @@ export default function SchedulePage() {
     if (savedSchedule) {
       setSchedule(savedSchedule)
     }
-  }, [])
+  }, [currentWeek])
 
   // Load saved schedule when week changes
   useEffect(() => {
@@ -634,7 +634,7 @@ export default function SchedulePage() {
               No schedule generated for this week
             </p>
             <p className="text-gray-400 text-sm mt-2">
-              Click "Generate Schedule" to create a new schedule
+              Click &quot;Generate Schedule&quot; to create a new schedule
             </p>
           </div>
         ) : (

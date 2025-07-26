@@ -31,7 +31,9 @@ export class ScheduleStorage {
           new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime()
       )
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(filteredSchedules))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filteredSchedules))
+      }
     } catch (error) {
       console.error('Failed to save schedule:', error)
     }
@@ -50,6 +52,8 @@ export class ScheduleStorage {
 
   static getAllSchedules(): StoredSchedule[] {
     try {
+      if (typeof window === 'undefined') return []
+      
       const stored = localStorage.getItem(STORAGE_KEY)
       if (!stored) return []
 
@@ -72,7 +76,9 @@ export class ScheduleStorage {
     try {
       const schedules = this.getAllSchedules()
       const filteredSchedules = schedules.filter(s => s.weekStart !== weekStart)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(filteredSchedules))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filteredSchedules))
+      }
     } catch (error) {
       console.error('Failed to delete schedule:', error)
     }
@@ -86,7 +92,9 @@ export class ScheduleStorage {
       if (schedule) {
         schedule.isPublished = isPublished
         schedule.updatedAt = new Date().toISOString()
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(schedules))
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(schedules))
+        }
       }
     } catch (error) {
       console.error('Failed to update schedule status:', error)
@@ -106,7 +114,9 @@ export class ScheduleStorage {
   static importSchedules(data: string): boolean {
     try {
       const schedules = JSON.parse(data) as StoredSchedule[]
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(schedules))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(schedules))
+      }
       return true
     } catch (error) {
       console.error('Failed to import schedules:', error)

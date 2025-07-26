@@ -5,7 +5,9 @@ const CONFIG_STORAGE_KEY = 'megaschedule_config'
 export class ConfigStorage {
   static saveConfig(constraints: SchedulingConstraints): void {
     try {
-      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(constraints))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(constraints))
+      }
     } catch (error) {
       console.error('Failed to save configuration:', error)
     }
@@ -13,6 +15,8 @@ export class ConfigStorage {
 
   static loadConfig(): SchedulingConstraints | null {
     try {
+      if (typeof window === 'undefined') return null
+      
       const stored = localStorage.getItem(CONFIG_STORAGE_KEY)
       if (!stored) return null
 
@@ -53,7 +57,9 @@ export class ConfigStorage {
 
   static resetToDefaults(): void {
     try {
-      localStorage.removeItem(CONFIG_STORAGE_KEY)
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(CONFIG_STORAGE_KEY)
+      }
     } catch (error) {
       console.error('Failed to reset configuration:', error)
     }
