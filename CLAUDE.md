@@ -1,0 +1,18 @@
+## IMPORTANT: Sound Notification
+
+After finishing responding to my request or running a command, run this command to notify me by sound:
+
+```bash
+afplay /System/Library/Sounds/Funk.aiff
+```
+
+I'll make sure servers are running and reladed don't try to do it yourself.
+
+## Important: linting
+
+Before finishing make sure to run the linter
+
+```node
+npm run lint
+npm run format
+```
