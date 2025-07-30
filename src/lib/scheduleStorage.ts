@@ -107,7 +107,7 @@ export class ScheduleStorage {
       }
 
       // Calculate the week dates (Monday to Sunday)
-      const weekDates = []
+      const weekDates: string[] = []
       const startOfWeek = new Date(weekStartDateObj)
       startOfWeek.setDate(
         weekStartDateObj.getDate() - weekStartDateObj.getDay() + 1

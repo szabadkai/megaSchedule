@@ -320,6 +320,7 @@ export class SimpleScheduler {
       afternoon: 8,
       night: 8,
       day: 12, // 12-hour weekend day shift
+      fullday: 24, // 24-hour full day shift
     }
     return shiftHours[shift.type] || 8
   }
@@ -388,12 +389,12 @@ export class SimpleScheduler {
   }
 
   private getShiftStartHour(shiftType: ShiftType): number {
-    const times = { morning: 7, afternoon: 15, night: 23, day: 7 }
+    const times = { morning: 7, afternoon: 15, night: 23, day: 7, fullday: 0 }
     return times[shiftType] || 7
   }
 
   private getShiftEndHour(shiftType: ShiftType): number {
-    const times = { morning: 15, afternoon: 23, night: 7, day: 19 }
+    const times = { morning: 15, afternoon: 23, night: 7, day: 19, fullday: 23 }
     return times[shiftType] || 15
   }
 

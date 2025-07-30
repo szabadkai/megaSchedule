@@ -167,39 +167,57 @@ export class ScheduleConfigStorage {
       ]
 
       days.forEach(day => {
-        if (config.dayConfigurations[day]) {
-          const dayConfig = config.dayConfigurations[day]
+        if (
+          typeof configObj.dayConfigurations === 'object' &&
+          configObj.dayConfigurations !== null &&
+          (configObj.dayConfigurations as Record<string, unknown>)[day]
+        ) {
+          const dayConfig = (
+            configObj.dayConfigurations as Record<string, unknown>
+          )[day]
 
-          // Merge with default day config
-          migrated.dayConfigurations[day] = {
-            enabledShiftTypes:
-              dayConfig.enabledShiftTypes ||
-              migrated.dayConfigurations[day].enabledShiftTypes,
-            shiftSkillRequirements: {
-              ...migrated.dayConfigurations[day].shiftSkillRequirements,
-              ...dayConfig.shiftSkillRequirements,
-            },
-            shiftStaffRequirements: {
-              ...migrated.dayConfigurations[day].shiftStaffRequirements,
-              ...dayConfig.shiftStaffRequirements,
-            },
+          // Type guard to check if dayConfig is an object
+          if (typeof dayConfig === 'object' && dayConfig !== null) {
+            const dayConfigObj = dayConfig as Record<string, unknown>
+
+            // Merge with default day config
+            migrated.dayConfigurations[day] = {
+              enabledShiftTypes:
+                (Array.isArray(dayConfigObj.enabledShiftTypes)
+                  ? dayConfigObj.enabledShiftTypes
+                  : null) || migrated.dayConfigurations[day].enabledShiftTypes,
+              shiftSkillRequirements: {
+                ...migrated.dayConfigurations[day].shiftSkillRequirements,
+                ...(typeof dayConfigObj.shiftSkillRequirements === 'object' &&
+                dayConfigObj.shiftSkillRequirements !== null
+                  ? dayConfigObj.shiftSkillRequirements
+                  : {}),
+              },
+              shiftStaffRequirements: {
+                ...migrated.dayConfigurations[day].shiftStaffRequirements,
+                ...(typeof dayConfigObj.shiftStaffRequirements === 'object' &&
+                dayConfigObj.shiftStaffRequirements !== null
+                  ? dayConfigObj.shiftStaffRequirements
+                  : {}),
+              },
+            }
           }
         }
       })
     }
 
     // Handle legacy format migration (from old SchedulingConstraints)
-    if (config.weekendScheduleEnabled && config.weekendShiftTypes) {
+    if (configObj.weekendScheduleEnabled && configObj.weekendShiftTypes) {
       // Migrate weekend settings to Saturday/Sunday
       const weekendConfig: DayScheduleConfig = {
-        enabledShiftTypes: config.weekendShiftTypes,
+        enabledShiftTypes: configObj.weekendShiftTypes as any,
         shiftSkillRequirements: {
           ...defaultDayConfig.shiftSkillRequirements,
-          ...(config.weekendShiftSkillRequirements || {}),
+          ...((configObj.weekendShiftSkillRequirements as any) || {}),
         },
         shiftStaffRequirements: {
           ...defaultDayConfig.shiftStaffRequirements,
-          ...(config.weekendShiftStaffRequirements || {}),
+          ...((configObj.weekendShiftStaffRequirements as any) || {}),
         },
       }
 
@@ -207,7 +225,10 @@ export class ScheduleConfigStorage {
       migrated.dayConfigurations.sunday = { ...weekendConfig }
 
       // Set weekday config from legacy settings
-      if (config.shiftSkillRequirements || config.shiftStaffRequirements) {
+      if (
+        configObj.shiftSkillRequirements ||
+        configObj.shiftStaffRequirements
+      ) {
         const weekdayDays: DayOfWeek[] = [
           'monday',
           'tuesday',
@@ -220,11 +241,11 @@ export class ScheduleConfigStorage {
             enabledShiftTypes: ['morning', 'afternoon', 'night'],
             shiftSkillRequirements: {
               ...defaultDayConfig.shiftSkillRequirements,
-              ...(config.shiftSkillRequirements || {}),
+              ...((configObj.shiftSkillRequirements as any) || {}),
             },
             shiftStaffRequirements: {
               ...defaultDayConfig.shiftStaffRequirements,
-              ...(config.shiftStaffRequirements || {}),
+              ...((configObj.shiftStaffRequirements as any) || {}),
             },
           }
         })

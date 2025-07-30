@@ -55,7 +55,7 @@ export default function StaffSchedulesPage() {
         staff: s,
         shifts: [],
         totalHours: 0,
-        shiftCounts: { morning: 0, afternoon: 0, night: 0, day: 0 },
+        shiftCounts: { morning: 0, afternoon: 0, night: 0, day: 0, fullday: 0 },
         dayCounts: {
           monday: 0,
           tuesday: 0,
@@ -74,8 +74,10 @@ export default function StaffSchedulesPage() {
       )
 
       const totalHours = assignedShifts.reduce((sum, shift) => {
-        // Day shifts are 12 hours, others are 8 hours
-        return sum + (shift.type === 'day' ? 12 : 8)
+        // Day shifts are 12 hours, fullday shifts are 24 hours, others are 8 hours
+        if (shift.type === 'day') return sum + 12
+        if (shift.type === 'fullday') return sum + 24
+        return sum + 8
       }, 0)
 
       const shiftCounts: Record<ShiftType, number> = {
@@ -83,6 +85,7 @@ export default function StaffSchedulesPage() {
         afternoon: 0,
         night: 0,
         day: 0,
+        fullday: 0,
       }
       const dayCounts: Record<DayOfWeek, number> = {
         monday: 0,
@@ -434,7 +437,7 @@ export default function StaffSchedulesPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="grid grid-cols-5 gap-2 text-xs">
                     <div className="text-center p-2 bg-yellow-50 rounded">
                       <div className="font-medium">Morning</div>
                       <div>{summary.shiftCounts.morning}</div>
@@ -446,6 +449,14 @@ export default function StaffSchedulesPage() {
                     <div className="text-center p-2 bg-purple-50 rounded">
                       <div className="font-medium">Night</div>
                       <div>{summary.shiftCounts.night}</div>
+                    </div>
+                    <div className="text-center p-2 bg-green-50 rounded">
+                      <div className="font-medium">Day</div>
+                      <div>{summary.shiftCounts.day}</div>
+                    </div>
+                    <div className="text-center p-2 bg-gray-50 rounded">
+                      <div className="font-medium">Full Day</div>
+                      <div>{summary.shiftCounts.fullday}</div>
                     </div>
                   </div>
 
