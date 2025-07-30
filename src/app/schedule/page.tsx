@@ -1,12 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 
 import { generateMockStaff } from '@/lib/mockData'
-import { SimpleScheduler, type SchedulingConstraints } from '@/lib/scheduler'
+import {
+  ConfigurableScheduler,
+  type SchedulingConstraints,
+} from '@/lib/scheduler'
 import { ScheduleStorage } from '@/lib/scheduleStorage'
+import { ScheduleConfigStorage } from '@/lib/scheduleConfigStorage'
 import { ConfigStorage } from '@/lib/configStorage'
-import type { Schedule, Shift, DayOfWeek, ShiftType, Staff } from '@/types'
+import { DateUtils } from '@/lib/dateUtils'
+import type { Schedule, Shift, DayOfWeek, Staff } from '@/types'
 
 const DAYS_OF_WEEK: DayOfWeek[] = [
   'monday',
@@ -17,16 +22,19 @@ const DAYS_OF_WEEK: DayOfWeek[] = [
   'saturday',
   'sunday',
 ]
-const SHIFT_TYPES: ShiftType[] = ['morning', 'afternoon', 'night']
 
 const SHIFT_TIMES = {
   morning: { start: '07:00', end: '15:00' },
   afternoon: { start: '15:00', end: '23:00' },
   night: { start: '23:00', end: '07:00' },
+  day: { start: '07:00', end: '19:00' },
+  fullday: { start: '00:00', end: '23:59' },
 }
 
 export default function SchedulePage() {
   const [currentWeek, setCurrentWeek] = useState(new Date())
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [viewMode, setViewMode] = useState<'weekly' | 'monthly'>('weekly')
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [staff, setStaff] = useState<Staff[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
@@ -38,29 +46,42 @@ export default function SchedulePage() {
     return ConfigStorage.loadConfig() || ConfigStorage.getDefaultConfig()
   })
 
-  // Load mock staff data and check for existing schedule on component mount
+  // Handle URL parameters on component mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const weekParam = urlParams.get('week')
+    const monthParam = urlParams.get('month')
+    const viewParam = urlParams.get('view')
+
+    if (monthParam) {
+      setCurrentMonth(new Date(monthParam))
+      setViewMode('monthly')
+    } else if (weekParam) {
+      setCurrentWeek(new Date(weekParam))
+      setViewMode('weekly')
+    } else if (viewParam === 'monthly') {
+      setViewMode('monthly')
+    }
+  }, [])
+
+  // Load mock staff data
   useEffect(() => {
     const mockStaff = generateMockStaff()
     setStaff(mockStaff)
+  }, [])
 
-    // Check if there's a saved schedule for the current week
-    const weekStart = getWeekDates(currentWeek)[0].toISOString()
-    const savedSchedule = ScheduleStorage.getScheduleForWeek(weekStart)
-    if (savedSchedule) {
-      setSchedule(savedSchedule)
-    }
-  }, [currentWeek])
-
-  // Load saved schedule when week changes
+  // Load saved schedule when period or view mode changes
   useEffect(() => {
-    const weekStart = getWeekDates(currentWeek)[0].toISOString()
-    const savedSchedule = ScheduleStorage.getScheduleForWeek(weekStart)
-    if (savedSchedule) {
+    if (viewMode === 'weekly') {
+      const weekStart = getWeekDates(currentWeek)[0].toISOString()
+      const savedSchedule = ScheduleStorage.getScheduleForWeek(weekStart)
       setSchedule(savedSchedule)
     } else {
-      setSchedule(null)
+      const monthStart = DateUtils.getMonthStart(currentMonth).toISOString()
+      const savedSchedule = ScheduleStorage.getScheduleForMonth(monthStart)
+      setSchedule(savedSchedule)
     }
-  }, [currentWeek])
+  }, [currentWeek, currentMonth, viewMode])
 
   // Save configuration whenever it changes
   useEffect(() => {
@@ -93,43 +114,24 @@ export default function SchedulePage() {
     setIsGenerating(true)
 
     try {
-      const weekDates = getWeekDates(currentWeek)
-      const shiftTemplates: Shift[] = []
+      // Load configuration from ScheduleConfigStorage
+      const config = ScheduleConfigStorage.loadConfiguration()
 
-      // Create shift templates for the week
-      weekDates.forEach((date, dayIndex) => {
-        const dayName = DAYS_OF_WEEK[dayIndex]
+      // Create a new ConfigurableScheduler with staff and config
+      const scheduler = new ConfigurableScheduler(staff, config)
 
-        SHIFT_TYPES.forEach(shiftType => {
-          // Use configured skill and staff requirements
-          const requiredSkills =
-            constraints.shiftSkillRequirements[shiftType] || []
-          const staffReq = constraints.shiftStaffRequirements[shiftType]
-          const minimumStaff = staffReq?.minimum || 2
-          const maximumStaff = staffReq?.maximum || 4
+      let generatedSchedule: Schedule
 
-          const shift: Shift = {
-            id: `${dayName}-${shiftType}-${date.getTime()}`,
-            type: shiftType,
-            day: dayName,
-            startTime: SHIFT_TIMES[shiftType].start,
-            endTime: SHIFT_TIMES[shiftType].end,
-            requiredSkills,
-            minimumStaff,
-            maximumStaff,
-            assignedStaff: [],
-          }
-          shiftTemplates.push(shift)
-        })
-      })
-
-      // Use the scheduler to assign staff
-      const scheduler = new SimpleScheduler(staff)
-      const generatedSchedule = scheduler.generateSchedule(
-        weekDates[0].toISOString(),
-        shiftTemplates,
-        constraints
-      )
+      if (viewMode === 'weekly') {
+        const weekDates = getWeekDates(currentWeek)
+        generatedSchedule = scheduler.generateSchedule(
+          weekDates[0].toISOString()
+        )
+      } else {
+        // Monthly schedule generation
+        const monthStart = DateUtils.getMonthStart(currentMonth).toISOString()
+        generatedSchedule = scheduler.generateMonthlySchedule(monthStart)
+      }
 
       setSchedule(generatedSchedule)
 
@@ -158,6 +160,15 @@ export default function SchedulePage() {
     newWeek.setDate(currentWeek.getDate() + (direction === 'next' ? 7 : -7))
     setCurrentWeek(newWeek)
     // Schedule will be loaded in useEffect when currentWeek changes
+  }
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const newMonth = DateUtils.addMonths(
+      currentMonth,
+      direction === 'next' ? 1 : -1
+    )
+    setCurrentMonth(newMonth)
+    // Schedule will be loaded in useEffect when currentMonth changes
   }
 
   const toggleSchedulePublished = () => {
@@ -209,7 +220,7 @@ export default function SchedulePage() {
 
   const getAvailableStaffForShift = (shift: Shift): Staff[] => {
     // Get staff that aren't already assigned to this shift
-    const assignedStaffIds = shift.assignedStaff
+    const assignedStaffIds = shift.assignedStaff || []
     return staff.filter(s => !assignedStaffIds.includes(s.id) && s.isActive)
   }
 
@@ -247,35 +258,84 @@ export default function SchedulePage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Schedule</h1>
           <p className="mt-1 text-sm text-gray-600">
-            View and manage weekly schedules
+            View and manage {viewMode} schedules
           </p>
         </div>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => navigateWeek('prev')}
-            className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
-          >
-            ← Previous Week
-          </button>
-          <button
-            onClick={() => navigateWeek('next')}
-            className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
-          >
-            Next Week →
-          </button>
-          <button
-            onClick={() => setShowConfig(!showConfig)}
-            className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium"
-          >
-            ⚙️ Config
-          </button>
-          <button
-            onClick={generateSmartSchedule}
-            disabled={isGenerating || staff.length === 0}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-md text-sm font-medium"
-          >
-            {isGenerating ? 'Generating...' : 'Generate Schedule'}
-          </button>
+        <div className="flex items-center space-x-4">
+          {/* View Mode Toggle */}
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('weekly')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                viewMode === 'weekly'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              📅 Weekly
+            </button>
+            <button
+              onClick={() => setViewMode('monthly')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                viewMode === 'monthly'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              🗓️ Monthly
+            </button>
+          </div>
+
+          {/* Navigation Controls */}
+          <div className="flex space-x-2">
+            {viewMode === 'weekly' ? (
+              <>
+                <button
+                  onClick={() => navigateWeek('prev')}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  ← Previous Week
+                </button>
+                <button
+                  onClick={() => navigateWeek('next')}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  Next Week →
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => navigateMonth('prev')}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  ← Previous Month
+                </button>
+                <button
+                  onClick={() => navigateMonth('next')}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  Next Month →
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={() => setShowConfig(!showConfig)}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium"
+            >
+              ⚙️ Config
+            </button>
+            <button
+              onClick={generateSmartSchedule}
+              disabled={isGenerating || staff.length === 0}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-md text-sm font-medium"
+            >
+              {isGenerating
+                ? 'Generating...'
+                : `Generate ${viewMode === 'weekly' ? 'Weekly' : 'Monthly'} Schedule`}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -307,300 +367,24 @@ export default function SchedulePage() {
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-3">
-                Constraints
-              </h4>
-              <div className="space-y-3">
-                <label className="block">
-                  <span className="text-sm text-gray-600">
-                    Max Consecutive Shifts
-                  </span>
-                  <input
-                    type="number"
-                    value={constraints.maxConsecutiveShifts}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        maxConsecutiveShifts: parseInt(e.target.value),
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">
-                    Min Rest Hours Between Shifts
-                  </span>
-                  <input
-                    type="number"
-                    value={constraints.minRestHoursBetweenShifts}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        minRestHoursBetweenShifts: parseInt(e.target.value),
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">
-                    Max Hours Per Week
-                  </span>
-                  <input
-                    type="number"
-                    value={constraints.maxHoursPerWeek}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        maxHoursPerWeek: parseInt(e.target.value),
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={constraints.requireSkillMatch}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        requireSkillMatch: e.target.checked,
-                      })
-                    }
-                    className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-600">
-                    Require Skill Match
-                  </span>
-                </label>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={constraints.minimumSkillsRequired}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        minimumSkillsRequired: e.target.checked,
-                      })
-                    }
-                    className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-600">
-                    Minimum Skills Required
-                  </span>
-                </label>
+          {/* Configuration Link */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-medium text-blue-900 mb-1">
+                  Schedule Configuration
+                </h4>
+                <p className="text-sm text-blue-700">
+                  Configure shift types, requirements, and constraints for each
+                  day of the week
+                </p>
               </div>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-3">
-                Skill Requirements by Shift
-              </h4>
-              <div className="space-y-3">
-                {SHIFT_TYPES.map(shiftType => (
-                  <div key={shiftType} className="space-y-2">
-                    <label className="block">
-                      <span className="text-sm text-gray-600 capitalize">
-                        {shiftType} Shift Skills
-                      </span>
-                      <input
-                        type="text"
-                        value={constraints.shiftSkillRequirements[
-                          shiftType
-                        ].join(', ')}
-                        onChange={e =>
-                          setConstraints({
-                            ...constraints,
-                            shiftSkillRequirements: {
-                              ...constraints.shiftSkillRequirements,
-                              [shiftType]: e.target.value
-                                .split(',')
-                                .map(s => s.trim())
-                                .filter(s => s.length > 0),
-                            },
-                          })
-                        }
-                        placeholder="Enter skills separated by commas"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      />
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="block">
-                        <span className="text-sm text-gray-600">Min Staff</span>
-                        <input
-                          type="number"
-                          min="1"
-                          value={
-                            constraints.shiftStaffRequirements[shiftType]
-                              .minimum
-                          }
-                          onChange={e =>
-                            setConstraints({
-                              ...constraints,
-                              shiftStaffRequirements: {
-                                ...constraints.shiftStaffRequirements,
-                                [shiftType]: {
-                                  ...constraints.shiftStaffRequirements[
-                                    shiftType
-                                  ],
-                                  minimum: parseInt(e.target.value) || 1,
-                                },
-                              },
-                            })
-                          }
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-sm text-gray-600">Max Staff</span>
-                        <input
-                          type="number"
-                          min="1"
-                          value={
-                            constraints.shiftStaffRequirements[shiftType]
-                              .maximum
-                          }
-                          onChange={e =>
-                            setConstraints({
-                              ...constraints,
-                              shiftStaffRequirements: {
-                                ...constraints.shiftStaffRequirements,
-                                [shiftType]: {
-                                  ...constraints.shiftStaffRequirements[
-                                    shiftType
-                                  ],
-                                  maximum: parseInt(e.target.value) || 1,
-                                },
-                              },
-                            })
-                          }
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-3">
-                Preference Weights
-              </h4>
-              <div className="space-y-3">
-                <label className="block">
-                  <span className="text-sm text-gray-600">Preferred Shift</span>
-                  <input
-                    type="number"
-                    value={constraints.weights.preferredShift}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        weights: {
-                          ...constraints.weights,
-                          preferredShift: parseInt(e.target.value),
-                        },
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">
-                    Non-Preferred Shift
-                  </span>
-                  <input
-                    type="number"
-                    value={constraints.weights.nonPreferredShift}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        weights: {
-                          ...constraints.weights,
-                          nonPreferredShift: parseInt(e.target.value),
-                        },
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">
-                    Preferred Day Off
-                  </span>
-                  <input
-                    type="number"
-                    value={constraints.weights.preferredDayOff}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        weights: {
-                          ...constraints.weights,
-                          preferredDayOff: parseInt(e.target.value),
-                        },
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">Matching Skill</span>
-                  <input
-                    type="number"
-                    value={constraints.weights.matchingSkill}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        weights: {
-                          ...constraints.weights,
-                          matchingSkill: parseInt(e.target.value),
-                        },
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">
-                    No Matching Skill
-                  </span>
-                  <input
-                    type="number"
-                    value={constraints.weights.noMatchingSkill}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        weights: {
-                          ...constraints.weights,
-                          noMatchingSkill: parseInt(e.target.value),
-                        },
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm text-gray-600">
-                    Needs More Hours
-                  </span>
-                  <input
-                    type="number"
-                    value={constraints.weights.needsMoreHours}
-                    onChange={e =>
-                      setConstraints({
-                        ...constraints,
-                        weights: {
-                          ...constraints.weights,
-                          needsMoreHours: parseInt(e.target.value),
-                        },
-                      })
-                    }
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </label>
-              </div>
+              <a
+                href="/schedule-config"
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
+              >
+                Configure Schedule
+              </a>
             </div>
           </div>
         </div>
@@ -609,8 +393,25 @@ export default function SchedulePage() {
       <div className="bg-white shadow rounded-lg p-6">
         <div className="mb-4">
           <h2 className="text-lg font-medium text-gray-900">
-            Week of {formatDate(weekDates[0])} - {formatDate(weekDates[6])}
+            {viewMode === 'weekly'
+              ? `Week of ${formatDate(weekDates[0])} - ${formatDate(weekDates[6])}`
+              : DateUtils.formatMonthYear(currentMonth)}
           </h2>
+          {viewMode === 'weekly' &&
+            schedule &&
+            schedule.id.includes('weekly-from-monthly') && (
+              <p className="text-sm text-blue-600 mt-1">
+                📅 Showing data from monthly schedule
+              </p>
+            )}
+          {viewMode === 'monthly' && (
+            <p className="text-sm text-gray-600 mt-1">
+              {DateUtils.getDaysInMonth(currentMonth)} days •
+              {schedule
+                ? ` ${schedule.shifts.length} total shifts`
+                : ' No schedule generated'}
+            </p>
+          )}
         </div>
 
         {!schedule ? (
@@ -631,13 +432,15 @@ export default function SchedulePage() {
               </svg>
             </div>
             <p className="text-gray-500 text-lg">
-              No schedule generated for this week
+              No schedule generated for this{' '}
+              {viewMode === 'weekly' ? 'week' : 'month'}
             </p>
             <p className="text-gray-400 text-sm mt-2">
-              Click &quot;Generate Schedule&quot; to create a new schedule
+              Click &quot;Generate Schedule&quot; to create a new {viewMode}{' '}
+              schedule
             </p>
           </div>
-        ) : (
+        ) : viewMode === 'weekly' ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -659,96 +462,300 @@ export default function SchedulePage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {SHIFT_TYPES.map(shiftType => (
-                  <tr key={shiftType}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      <div>
-                        <div className="capitalize">{shiftType}</div>
-                        <div className="text-gray-500 text-xs">
-                          {SHIFT_TIMES[shiftType].start} -{' '}
-                          {SHIFT_TIMES[shiftType].end}
+                {(() => {
+                  // Get all unique shift types that exist in the schedule
+                  const existingShiftTypes = Array.from(
+                    new Set(schedule.shifts.map(shift => shift.type))
+                  ).sort((a, b) => {
+                    // Sort by preferred order: morning, afternoon, night, day, fullday
+                    const order = [
+                      'morning',
+                      'afternoon',
+                      'night',
+                      'day',
+                      'fullday',
+                    ]
+                    return order.indexOf(a) - order.indexOf(b)
+                  })
+
+                  return existingShiftTypes.map(shiftType => (
+                    <tr key={shiftType}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <div>
+                          <div className="capitalize">
+                            {shiftType === 'fullday' ? 'Full Day' : shiftType}
+                          </div>
+                          <div className="text-gray-500 text-xs">
+                            {SHIFT_TIMES[shiftType].start} -{' '}
+                            {SHIFT_TIMES[shiftType].end}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    {DAYS_OF_WEEK.map(day => {
-                      const shift = schedule.shifts.find(
-                        s => s.day === day && s.type === shiftType
-                      )
-                      return (
-                        <td
-                          key={`${day}-${shiftType}`}
-                          className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
-                        >
-                          {shift ? (
-                            <div className="space-y-1">
-                              <div className="flex justify-between items-center">
-                                <div className="text-xs text-gray-400">
-                                  {shift.assignedStaff.length}/
-                                  {shift.minimumStaff}-{shift.maximumStaff}{' '}
-                                  staff
+                      </td>
+                      {DAYS_OF_WEEK.map(day => {
+                        const shift = schedule.shifts.find(
+                          s => s.day === day && s.type === shiftType
+                        )
+                        return (
+                          <td
+                            key={`${day}-${shiftType}`}
+                            className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                          >
+                            {shift ? (
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center">
+                                  <div className="text-xs text-gray-400">
+                                    {shift.assignedStaff.length}/
+                                    {shift.minimumStaff}-{shift.maximumStaff}{' '}
+                                    staff
+                                  </div>
+                                  {editMode && (
+                                    <button
+                                      onClick={() => openShiftEditor(shift)}
+                                      className="text-xs text-blue-600 hover:text-blue-800"
+                                    >
+                                      Edit
+                                    </button>
+                                  )}
                                 </div>
-                                {editMode && (
-                                  <button
-                                    onClick={() => openShiftEditor(shift)}
-                                    className="text-xs text-blue-600 hover:text-blue-800"
-                                  >
-                                    Edit
-                                  </button>
+                                {shift.assignedStaff.length === 0 ? (
+                                  <div className="text-red-500 text-xs">
+                                    Unassigned
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {shift.assignedStaff.map(
+                                      (staffId, index) => {
+                                        const staffSkills =
+                                          getStaffSkills(staffId)
+                                        return (
+                                          <div
+                                            key={index}
+                                            className={`${
+                                              editMode
+                                                ? 'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs relative group cursor-pointer flex justify-between items-center'
+                                                : 'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs relative group cursor-help'
+                                            }`}
+                                            title={`Skills: ${staffSkills.join(', ')}`}
+                                          >
+                                            <span>{getStaffName(staffId)}</span>
+                                            {editMode && (
+                                              <button
+                                                onClick={() =>
+                                                  removeStaffFromShift(
+                                                    shift.id,
+                                                    staffId
+                                                  )
+                                                }
+                                                className="text-red-600 hover:text-red-800 ml-1"
+                                              >
+                                                ×
+                                              </button>
+                                            )}
+                                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                                              Skills: {staffSkills.join(', ')}
+                                            </div>
+                                          </div>
+                                        )
+                                      }
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                              {shift.assignedStaff.length === 0 ? (
-                                <div className="text-red-500 text-xs">
-                                  Unassigned
-                                </div>
-                              ) : (
+                            ) : (
+                              <div className="text-gray-400 text-xs">
+                                No shift
+                              </div>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))
+                })()}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="monthly-schedule-view">
+            {/* Monthly Calendar-style View */}
+            <div className="grid grid-cols-1 gap-4">
+              {(() => {
+                // Group shifts by date for monthly view
+                const shiftsByDate = new Map<string, Shift[]>()
+                schedule.shifts.forEach(shift => {
+                  const date = shift.date || 'unknown'
+                  if (!shiftsByDate.has(date)) {
+                    shiftsByDate.set(date, [])
+                  }
+                  shiftsByDate.get(date)!.push(shift)
+                })
+
+                // Note: sortedDates available if needed for other features
+
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-7 gap-1 mb-4">
+                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(
+                        day => (
+                          <div
+                            key={day}
+                            className="text-center text-xs font-medium text-gray-500 py-2"
+                          >
+                            {day}
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    {/* Monthly Calendar Grid */}
+                    <div className="grid grid-cols-7 gap-1">
+                      {(() => {
+                        const monthDates = DateUtils.getMonthDates(currentMonth)
+                        const firstDate = monthDates[0]
+                        const firstDayOfWeek = firstDate.getDay() // 0=Sunday, 1=Monday, etc.
+
+                        // Calculate padding for first week (Monday=0, Tuesday=1, etc. in our display)
+                        // Convert Sunday=0 to Monday=6, and Monday=1 to Monday=0, etc.
+                        const mondayBasedDay =
+                          firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1
+
+                        // Debug: Log calendar positioning
+                        console.log(
+                          `First day of ${DateUtils.formatMonthYear(currentMonth)}: ${firstDate.toDateString()}, Day of week: ${firstDayOfWeek}, Padding cells: ${mondayBasedDay}`
+                        )
+
+                        const calendarCells = []
+
+                        // Add empty cells for days before the first day of the month
+                        for (let i = 0; i < mondayBasedDay; i++) {
+                          calendarCells.push(
+                            <div
+                              key={`empty-${i}`}
+                              className="min-h-24 p-1 border border-transparent"
+                            ></div>
+                          )
+                        }
+
+                        // Add all the actual month dates
+                        monthDates.forEach(date => {
+                          const dateString = DateUtils.formatDate(date)
+                          const dayShifts = shiftsByDate.get(dateString) || []
+                          const isToday = DateUtils.isToday(date)
+                          const isWeekend = DateUtils.isWeekend(date)
+
+                          calendarCells.push(
+                            <div
+                              key={dateString}
+                              className={`min-h-24 p-1 border rounded text-xs ${
+                                isToday
+                                  ? 'bg-blue-50 border-blue-200'
+                                  : isWeekend
+                                    ? 'bg-gray-50 border-gray-200'
+                                    : 'bg-white border-gray-200'
+                              }`}
+                            >
+                              <div
+                                className={`font-medium mb-1 ${isToday ? 'text-blue-600' : 'text-gray-900'}`}
+                              >
+                                {date.getDate()}
+                              </div>
+
+                              {dayShifts.length > 0 ? (
                                 <div className="space-y-1">
-                                  {shift.assignedStaff.map((staffId, index) => {
-                                    const staffSkills = getStaffSkills(staffId)
+                                  {dayShifts.map(shift => {
+                                    const isUnderstaffed =
+                                      shift.assignedStaff.length <
+                                      shift.minimumStaff
                                     return (
                                       <div
-                                        key={index}
-                                        className={`${
-                                          editMode
-                                            ? 'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs relative group cursor-pointer flex justify-between items-center'
-                                            : 'bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs relative group cursor-help'
+                                        key={shift.id}
+                                        className={`px-1 py-0.5 rounded text-xs ${
+                                          isUnderstaffed
+                                            ? 'bg-red-100 text-red-700'
+                                            : shift.assignedStaff.length === 0
+                                              ? 'bg-yellow-100 text-yellow-700'
+                                              : 'bg-green-100 text-green-700'
                                         }`}
-                                        title={`Skills: ${staffSkills.join(', ')}`}
+                                        title={`${shift.type}: ${shift.assignedStaff.length}/${shift.minimumStaff}-${shift.maximumStaff} staff`}
                                       >
-                                        <span>{getStaffName(staffId)}</span>
-                                        {editMode && (
-                                          <button
-                                            onClick={() =>
-                                              removeStaffFromShift(
-                                                shift.id,
-                                                staffId
-                                              )
-                                            }
-                                            className="text-red-600 hover:text-red-800 ml-1"
-                                          >
-                                            ×
-                                          </button>
-                                        )}
-                                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
-                                          Skills: {staffSkills.join(', ')}
+                                        <div className="font-medium">
+                                          {shift.type === 'fullday'
+                                            ? 'Full'
+                                            : shift.type.substring(0, 3)}
+                                        </div>
+                                        <div>
+                                          {shift.assignedStaff.length}/
+                                          {shift.minimumStaff}
                                         </div>
                                       </div>
                                     )
                                   })}
                                 </div>
+                              ) : (
+                                <div className="text-gray-400 text-xs">
+                                  No shifts
+                                </div>
                               )}
                             </div>
-                          ) : (
-                            <div className="text-gray-400 text-xs">
-                              No shift
-                            </div>
-                          )}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                          )
+                        })
+
+                        return calendarCells
+                      })().map((cell, index) => (
+                        <React.Fragment key={`cell-${index}`}>
+                          {cell}
+                        </React.Fragment>
+                      ))}
+                    </div>
+
+                    {/* Monthly Summary Stats */}
+                    <div className="mt-6 bg-gray-50 rounded-lg p-4">
+                      <h3 className="text-sm font-medium text-gray-900 mb-3">
+                        Monthly Summary
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <div className="text-gray-500">Total Shifts</div>
+                          <div className="font-semibold">
+                            {schedule.shifts.length}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">Assigned</div>
+                          <div className="font-semibold text-green-600">
+                            {
+                              schedule.shifts.filter(
+                                s => s.assignedStaff.length > 0
+                              ).length
+                            }
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">Understaffed</div>
+                          <div className="font-semibold text-red-600">
+                            {
+                              schedule.shifts.filter(
+                                s => s.assignedStaff.length < s.minimumStaff
+                              ).length
+                            }
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">Unassigned</div>
+                          <div className="font-semibold text-yellow-600">
+                            {
+                              schedule.shifts.filter(
+                                s => s.assignedStaff.length === 0
+                              ).length
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
           </div>
         )}
 
@@ -764,29 +771,41 @@ export default function SchedulePage() {
                 )}
               </span>
               <span>
-                <span className="text-blue-600 font-medium">✓ Saved</span>
+                <span className="text-blue-600 font-medium">
+                  {schedule.id.includes('weekly-from-monthly')
+                    ? '📅 From Monthly'
+                    : '✓ Saved'}
+                </span>
               </span>
               <span className="text-xs">
                 Updated: {new Date(schedule.updatedAt).toLocaleString()}
               </span>
             </div>
             <div className="space-x-2">
-              <button
-                onClick={editSchedule}
-                className={`${
-                  editMode
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-yellow-600 hover:bg-yellow-700'
-                } text-white px-4 py-2 rounded-md text-sm font-medium`}
-              >
-                {editMode ? 'Exit Edit Mode' : 'Edit Schedule'}
-              </button>
-              <button
-                onClick={toggleSchedulePublished}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium"
-              >
-                {schedule.isPublished ? 'Unpublish' : 'Publish'} Schedule
-              </button>
+              {!schedule.id.includes('weekly-from-monthly') ? (
+                <>
+                  <button
+                    onClick={editSchedule}
+                    className={`${
+                      editMode
+                        ? 'bg-red-600 hover:bg-red-700'
+                        : 'bg-yellow-600 hover:bg-yellow-700'
+                    } text-white px-4 py-2 rounded-md text-sm font-medium`}
+                  >
+                    {editMode ? 'Exit Edit Mode' : 'Edit Schedule'}
+                  </button>
+                  <button
+                    onClick={toggleSchedulePublished}
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                  >
+                    {schedule.isPublished ? 'Unpublish' : 'Publish'} Schedule
+                  </button>
+                </>
+              ) : (
+                <div className="text-sm text-gray-500 italic">
+                  To edit this schedule, switch to monthly view
+                </div>
+              )}
             </div>
           </div>
         )}

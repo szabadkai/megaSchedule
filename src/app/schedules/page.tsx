@@ -24,15 +24,29 @@ export default function SchedulesPage() {
     return true
   })
 
-  const deleteSchedule = (weekStart: string) => {
+  const deleteSchedule = (schedule: StoredSchedule) => {
     if (confirm('Are you sure you want to delete this schedule?')) {
-      ScheduleStorage.deleteSchedule(weekStart)
+      if (schedule.scheduleType === 'monthly' && schedule.monthStart) {
+        ScheduleStorage.deleteMonthlySchedule(schedule.monthStart)
+      } else {
+        ScheduleStorage.deleteSchedule(schedule.weekStart)
+      }
       loadSchedules()
     }
   }
 
-  const togglePublished = (weekStart: string, currentStatus: boolean) => {
-    ScheduleStorage.updateScheduleStatus(weekStart, !currentStatus)
+  const togglePublished = (schedule: StoredSchedule) => {
+    if (schedule.scheduleType === 'monthly' && schedule.monthStart) {
+      ScheduleStorage.updateMonthlyScheduleStatus(
+        schedule.monthStart,
+        !schedule.isPublished
+      )
+    } else {
+      ScheduleStorage.updateScheduleStatus(
+        schedule.weekStart,
+        !schedule.isPublished
+      )
+    }
     loadSchedules()
   }
 
@@ -47,12 +61,30 @@ export default function SchedulesPage() {
     URL.revokeObjectURL(url)
   }
 
-  const formatWeekRange = (weekStart: string) => {
-    const start = new Date(weekStart)
-    const end = new Date(start)
-    end.setDate(start.getDate() + 6)
+  const formatSchedulePeriod = (schedule: StoredSchedule) => {
+    if (schedule.scheduleType === 'monthly' && schedule.monthStart) {
+      const monthDate = new Date(schedule.monthStart)
+      return {
+        primary: monthDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+        }),
+        secondary: `Month of ${monthDate.toLocaleDateString('en-US', {
+          month: 'short',
+          year: 'numeric',
+        })}`,
+      }
+    } else {
+      // Weekly schedule
+      const start = new Date(schedule.weekStart)
+      const end = new Date(start)
+      end.setDate(start.getDate() + 6)
 
-    return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`
+      return {
+        primary: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
+        secondary: `Week of ${start.toLocaleDateString()}`,
+      }
+    }
   }
 
   return (
@@ -144,7 +176,10 @@ export default function SchedulesPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Week
+                    Period
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -161,65 +196,85 @@ export default function SchedulesPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredSchedules.map(schedule => (
-                  <tr key={schedule.weekStart} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {formatWeekRange(schedule.weekStart)}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Week of{' '}
-                        {new Date(schedule.weekStart).toLocaleDateString()}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          schedule.isPublished
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}
-                      >
-                        {schedule.isPublished ? 'Published' : 'Draft'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {schedule.shifts.length} shifts
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(schedule.updatedAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <Link
-                        href={`/schedule?week=${schedule.weekStart}`}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        View
-                      </Link>
-                      <button
-                        onClick={() =>
-                          togglePublished(
-                            schedule.weekStart,
+                {filteredSchedules.map(schedule => {
+                  const periodInfo = formatSchedulePeriod(schedule)
+                  const scheduleKey =
+                    schedule.scheduleType === 'monthly'
+                      ? schedule.monthStart
+                      : schedule.weekStart
+
+                  return (
+                    <tr key={scheduleKey} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {periodInfo.primary}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {periodInfo.secondary}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            schedule.scheduleType === 'monthly'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}
+                        >
+                          {schedule.scheduleType === 'monthly'
+                            ? '🗓️ Monthly'
+                            : '📅 Weekly'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             schedule.isPublished
-                          )
-                        }
-                        className={`${
-                          schedule.isPublished
-                            ? 'text-yellow-600 hover:text-yellow-900'
-                            : 'text-green-600 hover:text-green-900'
-                        }`}
-                      >
-                        {schedule.isPublished ? 'Unpublish' : 'Publish'}
-                      </button>
-                      <button
-                        onClick={() => deleteSchedule(schedule.weekStart)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}
+                        >
+                          {schedule.isPublished ? 'Published' : 'Draft'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {schedule.shifts.length} shifts
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(schedule.updatedAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                        <Link
+                          href={
+                            schedule.scheduleType === 'monthly' &&
+                            schedule.monthStart
+                              ? `/schedule?month=${schedule.monthStart}&view=monthly`
+                              : `/schedule?week=${schedule.weekStart}`
+                          }
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          View
+                        </Link>
+                        <button
+                          onClick={() => togglePublished(schedule)}
+                          className={`${
+                            schedule.isPublished
+                              ? 'text-yellow-600 hover:text-yellow-900'
+                              : 'text-green-600 hover:text-green-900'
+                          }`}
+                        >
+                          {schedule.isPublished ? 'Unpublish' : 'Publish'}
+                        </button>
+                        <button
+                          onClick={() => deleteSchedule(schedule)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

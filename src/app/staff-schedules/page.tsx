@@ -55,7 +55,7 @@ export default function StaffSchedulesPage() {
         staff: s,
         shifts: [],
         totalHours: 0,
-        shiftCounts: { morning: 0, afternoon: 0, night: 0 },
+        shiftCounts: { morning: 0, afternoon: 0, night: 0, day: 0 },
         dayCounts: {
           monday: 0,
           tuesday: 0,
@@ -73,12 +73,16 @@ export default function StaffSchedulesPage() {
         shift.assignedStaff.includes(staffMember.id)
       )
 
-      const totalHours = assignedShifts.length * 8 // Assuming 8 hours per shift
+      const totalHours = assignedShifts.reduce((sum, shift) => {
+        // Day shifts are 12 hours, others are 8 hours
+        return sum + (shift.type === 'day' ? 12 : 8)
+      }, 0)
 
       const shiftCounts: Record<ShiftType, number> = {
         morning: 0,
         afternoon: 0,
         night: 0,
+        day: 0,
       }
       const dayCounts: Record<DayOfWeek, number> = {
         monday: 0,

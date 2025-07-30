@@ -7,7 +7,7 @@ import 'react-datepicker/dist/react-datepicker.css'
 import { generateMockStaff } from '@/lib/mockData'
 import type { Staff, StaffPreferences, ShiftType, DayOfWeek } from '@/types'
 
-const SHIFT_TYPES: ShiftType[] = ['morning', 'afternoon', 'night']
+const SHIFT_TYPES: ShiftType[] = ['morning', 'afternoon', 'night', 'day']
 const DAYS_OF_WEEK: DayOfWeek[] = [
   'monday',
   'tuesday',
@@ -383,8 +383,8 @@ export default function StaffPage() {
         <ul className="divide-y divide-gray-200">
           {staff.length === 0 ? (
             <li className="px-6 py-4 text-center text-gray-500">
-              No staff members added yet. Click &quot;Add Staff Member&quot; to get
-              started.
+              No staff members added yet. Click &quot;Add Staff Member&quot; to
+              get started.
             </li>
           ) : (
             staff.map(staffMember => (

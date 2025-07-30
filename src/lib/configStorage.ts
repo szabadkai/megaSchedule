@@ -16,7 +16,7 @@ export class ConfigStorage {
   static loadConfig(): SchedulingConstraints | null {
     try {
       if (typeof window === 'undefined') return null
-      
+
       const stored = localStorage.getItem(CONFIG_STORAGE_KEY)
       if (!stored) return null
 
@@ -34,6 +34,7 @@ export class ConfigStorage {
       maxHoursPerWeek: 40,
       requireSkillMatch: true,
       minimumSkillsRequired: true,
+      weekendScheduleEnabled: false,
       shiftSkillRequirements: {
         morning: ['nursing'],
         afternoon: ['nursing'],
@@ -44,6 +45,19 @@ export class ConfigStorage {
         afternoon: { minimum: 2, maximum: 4 },
         night: { minimum: 3, maximum: 4 },
       },
+      weekendShiftSkillRequirements: {
+        morning: ['nursing'],
+        afternoon: ['nursing'],
+        night: ['nursing', 'emergency care'],
+        day: ['nursing', 'patient care'],
+      },
+      weekendShiftStaffRequirements: {
+        morning: { minimum: 1, maximum: 3 },
+        afternoon: { minimum: 1, maximum: 3 },
+        night: { minimum: 2, maximum: 3 },
+        day: { minimum: 2, maximum: 4 },
+      },
+      weekendShiftTypes: ['day', 'night'],
       weights: {
         preferredShift: 20,
         nonPreferredShift: -5,

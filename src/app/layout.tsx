@@ -44,6 +44,12 @@ export default function RootLayout({
                     Schedule
                   </Link>
                   <Link
+                    href="/schedule-config"
+                    className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Config
+                  </Link>
+                  <Link
                     href="/schedules"
                     className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                   >
